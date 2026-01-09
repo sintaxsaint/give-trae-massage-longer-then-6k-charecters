@@ -3,484 +3,238 @@
 <head><title>CacheQuest Specs</title></head>
 <body>
 <pre style="white-space: pre-wrap; font-family: monospace;">
-CacheQuest - Complete System Build Request
-Project Overview
-Build a location-based treasure hunt game called CacheQuest where students find hidden caches around school, scan codes, and earn points to redeem for prizes.
-Architecture
-Repository 1: Frontend Website (Cloudflare Pages)
-Domain: cachequest.pages.dev
-Tech Stack: HTML, CSS, JavaScript (vanilla or React - your choice)
-Repository 2: Backend API (Cloudflare Worker + D1 Database)
-Separate account for security
-Tech Stack: Cloudflare Workers, D1 SQLite database
+Perfect! Here's a prompt optimized for Cline + MiniMax to build CacheQuest:
+html<!DOCTYPE html>
+<html>
+<head><title>CacheQuest Build Prompt for Cline</title></head>
+<body>
+<pre style="white-space: pre-wrap; font-family: monospace;">
+# CLINE BUILD INSTRUCTIONS - CacheQuest Backend
 
-Database Schema (D1)
-Table: users
-sqlCREATE TABLE users (
+You are building a Cloudflare Worker backend with D1 database. Work step-by-step, one file at a time.
+
+## CRITICAL RULES
+1. Ask before creating each file
+2. Show me the code before writing it
+3. Test each endpoint individually
+4. Use simple, clear variable names
+5. Add comments explaining logic
+
+## BUILD ORDER (Do these ONE AT A TIME)
+
+### Step 1: Project Setup
+Create these files in order:
+1. wrangler.toml - Basic config
+2. schema.sql - Just the tables
+3. package.json - Dependencies only
+
+Ask me to verify each before moving on.
+
+### Step 2: Utility Functions (src/utils.js)
+Build ONLY these functions:
+```javascript
+// 1. Haversine distance calculator (3 meter check)
+export function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// 2. Generate random token
+export function generateToken() {
+  return crypto.randomUUID();
+}
+
+// 3. Get current UK time and determine chunk
+export function getCurrentChunk() {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const time = hours * 60 + minutes;
+  
+  // 09:00-10:20 = START (540-620 mins)
+  // 10:40-12:40 = MIDDLE (640-760 mins)  
+  // 13:40-15:40 = END (820-940 mins)
+  
+  if (time >= 540 && time <= 620) return 'START';
+  if (time >= 640 && time <= 760) return 'MIDDLE';
+  if (time >= 820 && time <= 940) return 'END';
+  return null; // Inactive time
+}
+
+// 4. Calculate when cache should reactivate
+export function calculateReactivation(claimedChunk, claimTime) {
+  // START -> END same day
+  // MIDDLE -> START next day
+  // END -> MIDDLE next day
+  // Return Unix timestamp
+}
+```
+
+Stop after utils.js and let me test it.
+
+### Step 3: Authentication (src/auth.js)
+Build ONLY:
+- hashPassword(password) - Use bcrypt
+- verifyPassword(password, hash)
+- generateJWT(userId, tier)
+- verifyJWT(token)
+
+Test these before moving on.
+
+### Step 4: Database Queries (src/db.js)
+Build simple query functions:
+- getUser(username)
+- createUser(username, passwordHash)
+- getUserById(id)
+- getCache(cacheId)
+- getCacheByHalfCode(halfCode)
+- updateCacheStatus(cacheId, status, reactivateTime)
+
+NO COMPLEX LOGIC YET. Just simple SELECT/INSERT/UPDATE.
+
+### Step 5: Cache Logic (src/cache.js)
+Build ONE function at a time:
+
+1. verifyLocation(halfCode, lat, lng, userId, db)
+   - Find cache by half_code
+   - Check distance < 3 meters
+   - Create pending_claim
+   - Return verification token
+
+2. claimCache(verificationToken, userId, db)
+   - Check if pending_claim exists and not expired
+   - Check if cache still active
+   - Award points (FIRST person wins)
+   - Deactivate cache
+   - Calculate reactivation time
+
+3. getActiveCaches(userTier, db)
+   - Return caches where status='active'
+   - Filter response by tier (free/budget/premium)
+
+Build and test EACH function separately.
+
+### Step 6: Main Router (src/index.js)
+Wire up routes ONE AT A TIME:
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/cache/verify-location
+- POST /api/cache/claim
+- GET /api/cache/active
+
+Test each endpoint with curl or Postman before adding the next.
+
+### Step 7: Leaderboard (src/leaderboard.js)
+Simple SQL queries only:
+- getCurrentLeaderboard() - ORDER BY points DESC
+- getLifetimeLeaderboard() - ORDER BY lifetime_points DESC
+
+### Step 8: Cron Job (src/cron.js)
+Handle scheduled reactivation:
+- Run every 5 minutes
+- Check if in active window
+- Reactivate caches where deactivated_until <= now
+
+## DATABASE SCHEMA
+
+CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   points INTEGER DEFAULT 0,
   lifetime_points INTEGER DEFAULT 0,
-  subscription_tier TEXT DEFAULT 'free', -- 'free', 'budget', 'premium'
-  subscription_expires_at INTEGER, -- Unix timestamp
+  subscription_tier TEXT DEFAULT 'free',
   hints_used_this_week INTEGER DEFAULT 0,
   hints_used_this_term INTEGER DEFAULT 0,
-  last_hint_reset INTEGER, -- Unix timestamp
-  last_redemption INTEGER, -- Unix timestamp for free tier monthly limit
   created_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
-Table: caches
-sqlCREATE TABLE caches (
+
+CREATE TABLE caches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cache_number INTEGER UNIQUE NOT NULL,
-  half_code TEXT UNIQUE NOT NULL, -- e.g., "AB3X"
-  wordle_word TEXT NOT NULL, -- e.g., "CRANE"
+  half_code TEXT UNIQUE NOT NULL,
+  wordle_word TEXT NOT NULL,
   location_lat REAL NOT NULL,
   location_lng REAL NOT NULL,
-  location_area TEXT NOT NULL, -- 'Block A', 'Block B', 'Block C', 'Block D', 'Music Hallway', 'Playground', 'Courtyard', 'Cafeteria'
+  location_area TEXT NOT NULL,
   points_value INTEGER NOT NULL,
-  rarity TEXT NOT NULL, -- 'common', 'rare', 'epic'
-  chunk TEXT NOT NULL, -- 'START', 'MIDDLE', 'END'
-  status TEXT DEFAULT 'active', -- 'active', 'deactivated'
-  deactivated_until INTEGER, -- Unix timestamp when it reactivates
+  rarity TEXT NOT NULL,
+  chunk TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  deactivated_until INTEGER,
   created_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
-Table: claims
-sqlCREATE TABLE claims (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  cache_id INTEGER NOT NULL,
-  points_awarded INTEGER NOT NULL,
-  claimed_at INTEGER DEFAULT (strftime('%s', 'now')),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (cache_id) REFERENCES caches(id)
-);
-Table: pending_claims
-sqlCREATE TABLE pending_claims (
+
+CREATE TABLE pending_claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   cache_id INTEGER NOT NULL,
   verification_token TEXT UNIQUE NOT NULL,
-  expires_at INTEGER NOT NULL, -- 10 second grace period
-  created_at INTEGER DEFAULT (strftime('%s', 'now')),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (cache_id) REFERENCES caches(id)
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
-Table: redemptions
-sqlCREATE TABLE redemptions (
+
+CREATE TABLE claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  prize_name TEXT NOT NULL,
-  points_cost INTEGER NOT NULL,
-  redeemed_at INTEGER DEFAULT (strftime('%s', 'now')),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-Table: season_winners
-sqlCREATE TABLE season_winners (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  season_name TEXT NOT NULL, -- e.g., "Autumn 2026"
-  user_id INTEGER NOT NULL,
-  username TEXT NOT NULL,
-  final_points INTEGER NOT NULL,
-  rank INTEGER NOT NULL, -- 1, 2, 3
-  ended_at INTEGER DEFAULT (strftime('%s', 'now')),
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  cache_id INTEGER NOT NULL,
+  points_awarded INTEGER NOT NULL,
+  claimed_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 
-API Endpoints (Cloudflare Worker)
-Authentication
-POST /api/auth/register
+## TESTING CHECKLIST
 
-Body: { username, password }
-Creates user account
-Returns JWT token
+After each step, test:
+1. Does the code compile?
+2. Can you call the function?
+3. Does it return expected output?
+4. Does it handle errors?
 
-POST /api/auth/login
+## COMMON MISTAKES TO AVOID
 
-Body: { username, password }
-Returns JWT token
+❌ Don't build everything at once
+❌ Don't use complex async/await chains
+❌ Don't forget error handling
+❌ Don't skip testing steps
 
-GET /api/auth/me
+✅ One file at a time
+✅ Simple, clear code
+✅ Test after each change
+✅ Ask before proceeding
 
-Headers: Authorization: Bearer <token>
-Returns current user data
+## DEPENDENCIES (package.json)
 
-Cache System
-POST /api/cache/verify-location
-
-Body: { half_code, latitude, longitude }
-Headers: Authorization: Bearer <token>
-Checks if user within 3 meters of cache
-Creates pending_claim with 10-second grace period
-Returns: { success, verification_token, expires_in }
-
-POST /api/cache/claim
-
-Body: { verification_token }
-Headers: Authorization: Bearer <token>
-First person to call this within grace period wins
-Awards points, deactivates cache
-Returns: { success, points_awarded, new_total }
-
-GET /api/cache/active
-
-Headers: Authorization: Bearer <token>
-Returns list of currently active caches
-Response filtered by user's subscription tier:
-
-Free: cache_number, rarity only
-Budget: + location_area
-Premium: + points_value
-
-
-
-GET /api/cache/hint
-
-Headers: Authorization: Bearer <token>
-Returns hint based on subscription:
-
-Free: 1 per term
-Budget: 1 per week
-Premium: 3 per week
-
-
-Returns: { cache_number, location_area, hint_text }
-
-Leaderboard
-GET /api/leaderboard/current
-
-Returns current season leaderboard
-Shows: rank, username, points, badge (free/budget/premium)
-
-GET /api/leaderboard/hall-of-fame
-
-Returns past season winners
-
-GET /api/leaderboard/lifetime
-
-Returns lifetime points leaderboard
-
-Redemptions
-GET /api/prizes
-
-Headers: Authorization: Bearer <token>
-Returns available prizes with costs adjusted for tier:
-
-Free: -25% from budget
-Budget: baseline
-Premium: -25% from budget
-
-
-
-POST /api/redeem
-
-Body: { prize_id }
-Headers: Authorization: Bearer <token>
-Checks redemption limits (free = 1/month)
-Deducts points
-Records redemption
-
-Admin (manual operations)
-POST /api/admin/reset-season
-
-Requires admin token in environment variable
-Archives current season to season_winners
-Resets all user points to 0
-Keeps lifetime_points
-
-POST /api/admin/add-cache
-
-Body: { half_code, wordle_word, lat, lng, location_area, points_value, rarity, chunk }
-Adds new cache to database
-
-
-Game Logic
-Cache Reactivation (Chunk System)
-Implemented in Worker with Cloudflare Cron Trigger:
-School day structure:
-
-Periods 1-2 (09:00-10:20) = START
-Periods 3-5 (10:40-12:40) = MIDDLE
-Periods 6-8 (13:40-15:40) = END
-
-Reactivation rules:
-
-Claimed in START → reactivates in END (same day)
-Claimed in MIDDLE → reactivates in START (next day)
-Claimed in END → reactivates in MIDDLE (next day)
-
-Inactive windows:
-
-08:40-09:00 (registration)
-13:35-13:40 (registration)
-15:40-08:45 next day (after school)
-
-Subscription Tiers & Pricing
-Free Tier:
-
-1 hint per term
-1 redemption per month
-Prizes cost 25% LESS than Budget tier
-Badge: "Free Player"
-
-Budget Tier - £1.50 per term (4 months):
-
-1 hint per week
-Unlimited redemptions
-Baseline prize costs
-Badge: "Budget Champion"
-
-Premium Tier - £3 per term (4 months):
-
-3 hints per week
-Unlimited redemptions
-Prizes cost 25% LESS than Budget tier
-Live cache notifications with location area + point worth
-No badge
-
-Prize Pricing (Budget tier baseline)
-javascriptconst prizes = [
-  { name: "Single piece of gum", budget_cost: 120, free_cost: 90, premium_cost: 90 },
-  { name: "Pack of gum (5 pieces)", budget_cost: 600, free_cost: 450, premium_cost: 450 },
-  { name: "2 packs of gum", budget_cost: 1200, free_cost: 900, premium_cost: 900 },
-  { name: "Gum + small candy", budget_cost: 1050, free_cost: 788, premium_cost: 788 },
-  { name: "5 packs of gum", budget_cost: 2250, free_cost: 1688, premium_cost: 1688 },
-  { name: "Novelty toy + gum", budget_cost: 3000, free_cost: 2250, premium_cost: 2250 }
-];
-Cache Values
-
-Common: 40-60 points
-Rare: 110-150 points
-Epic: 225-300 points
-
-Notification System
-All tiers see: cache_number, rarity
-Budget adds: location_area
-Premium adds: location_area, points_value
-Special broadcasts:
-
-Every 3rd cache: All tiers see location_area
-Every 6th cache: All tiers see full info (location + points + rarity)
-
-
-Frontend Design (Demo Version)
-Color Scheme
-css/* Main background */
-background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
-
-/* Cache notification banner */
-.banner {
-  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+{
+  "name": "cachequest-worker",
+  "version": "1.0.0",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.0.0"
+  }
 }
 
-/* Text colors */
---text-primary: #ffffff;
---text-secondary: #e5e7eb;
---highlight: #00f2fe;
---points-gold: #fbbf24;
-```
+## ENVIRONMENT VARIABLES
 
-### Pages Needed
+Set these in Cloudflare dashboard:
+- JWT_SECRET (generate random 256-bit string)
+- ADMIN_TOKEN (generate random string)
 
-**1. Login/Register Page**
-- Simple form
-- Toggle between login/register
+## START HERE
 
-**2. Dashboard (Main Page)**
-- Current points display (large, prominent)
-- Subscription tier badge
-- "Find Cache" button
-- Recent notifications feed
-- Quick stats (hints remaining, redemptions this month)
+Begin with: "Let's start with Step 1. Create wrangler.toml with basic Cloudflare Worker configuration."
 
-**3. Cache Scanner Page**
-- Input field for half-code
-- "Verify Location" button
-- Shows verification link when ready
-- Countdown timer (10 seconds)
-
-**4. Leaderboard Page**
-- Tabs: Current Season | Hall of Fame | Lifetime
-- Shows rank, username, points, tier badge
-
-**5. Prizes Page**
-- Grid of available prizes
-- Shows adjusted costs based on tier
-- "Redeem" button (checks limits)
-
-**6. Hints Page**
-- Shows hints remaining this week/term
-- "Get Hint" button
-- Displays hint: cache number + location area
-
-### Demo Data
-Pre-populate database with:
-- 3 demo users (one per tier)
-- 10 demo caches across different locations
-- Sample leaderboard data
-- All 6 prize options
-
----
-
-## Security Requirements
-
-### Cloudflare Worker Secrets (Environment Variables)
-```
-JWT_SECRET=<random-256-bit-key>
-ADMIN_TOKEN=<random-admin-key>
-DATABASE_ID=<D1-database-id>
-Security Features
-
-Passwords hashed with bcrypt (cost factor 10)
-JWT tokens expire after 7 days
-Location verification uses Haversine formula (3-meter radius)
-Rate limiting on API endpoints (100 requests/min per user)
-CORS restricted to your frontend domain
-
-Haversine Formula (for location verification)
-javascriptfunction getDistanceInMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // Earth's radius in meters
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c;
-}
-
-Deliverables
-Repository 1: Frontend (cachequest-frontend)
-
-index.html - Login/dashboard
-styles.css - All styling with gradient background
-app.js - Main application logic, API calls
-README.md - Setup instructions
-
-Repository 2: Backend (cachequest-worker)
-
-src/index.js - Main Worker entry point
-src/auth.js - Authentication handlers
-src/cache.js - Cache management logic
-src/leaderboard.js - Leaderboard queries
-src/redemptions.js - Prize redemption logic
-src/utils.js - Helper functions (Haversine, etc.)
-wrangler.toml - Cloudflare configuration
-schema.sql - Database schema
-seed.sql - Demo data
-README.md - Deployment instructions
-
-
-Testing Instructions
-
-Deploy Worker to Cloudflare
-Create D1 database and run schema.sql + seed.sql
-Deploy frontend to Cloudflare Pages
-Test user registration and login
-Test cache verification flow (mock GPS coordinates)
-Test hint system for each tier
-Test redemption limits
-Verify leaderboard displays correctly
-Test notification system (cache activation broadcasts)
-Test manual season reset
-
-
-Additional Notes
-
-Use modern JavaScript (ES6+)
-Add comments explaining complex logic
-Include error handling for all API calls
-Make frontend responsive (mobile-friendly)
-Add loading states for API requests
-Include input validation on both frontend and backend
-Log important events (claims, redemptions) for debugging
-
-
-Questions Before Building
-
-Prefer vanilla JavaScript or React for frontend?
-Should notifications persist in database or just be real-time?
-Want WebSocket support for live notifications or polling?
-Need admin dashboard UI or just API endpoints?
-Should expired verification tokens auto-cleanup or manual?
-
-Please build a fully functional demo with the specifications above. Focus on core functionality first, then polish the UI.
----
-
-## Cloudflare Cron Trigger Setup
-
-Add to wrangler.toml:
-[triggers]
-crons = ["*/5 * * * *"]
-
-Cron job handler should:
-- Run every 5 minutes
-- Check current time (HH:MM format in UK timezone)
-- Determine if in active window (skip if 08:40-09:00, 13:35-13:40, or 15:40-08:45)
-- Query caches where deactivated_until <= current_timestamp
-- Update their status to 'active'
-- Clean up expired pending_claims older than 1 minute
-
----
-
-## Demo Seed Data (seed.sql)
-
--- 8 demo caches (one per location area)
-INSERT INTO caches (cache_number, half_code, wordle_word, location_lat, location_lng, location_area, points_value, rarity, chunk, status) VALUES
-(1, 'AB3X', 'CRANE', 50.7984, -1.0916, 'Block A', 45, 'common', 'START', 'active'),
-(2, 'CD7Y', 'SLATE', 50.7985, -1.0917, 'Block B', 50, 'common', 'MIDDLE', 'active'),
-(3, 'EF2Z', 'TRACE', 50.7986, -1.0918, 'Block C', 120, 'rare', 'END', 'active'),
-(4, 'GH5W', 'BLUNT', 50.7987, -1.0919, 'Block D', 55, 'common', 'START', 'active'),
-(5, 'IJ8V', 'SHADE', 50.7988, -1.0920, 'Music Hallway', 130, 'rare', 'MIDDLE', 'active'),
-(6, 'KL1U', 'CRISP', 50.7989, -1.0921, 'Playground', 60, 'common', 'END', 'active'),
-(7, 'MN4T', 'FROST', 50.7990, -1.0922, 'Courtyard', 250, 'epic', 'START', 'active'),
-(8, 'OP9S', 'GRASP', 50.7991, -1.0923, 'Cafeteria', 65, 'common', 'MIDDLE', 'active');
-
--- 3 demo users (use actual bcrypt hashes when building)
-INSERT INTO users (username, password_hash, points, lifetime_points, subscription_tier) VALUES
-('demo_free', 'REPLACE_WITH_BCRYPT_HASH', 150, 150, 'free'),
-('demo_budget', 'REPLACE_WITH_BCRYPT_HASH', 450, 450, 'budget'),
-('demo_premium', 'REPLACE_WITH_BCRYPT_HASH', 820, 820, 'premium');
-
----
-
-## Answers to Questions
-
-Frontend: Vanilla JavaScript (easier to understand and maintain)
-Notifications: Real-time only via polling (no database persistence needed)
-Live updates: Poll /api/cache/active every 10 seconds
-Admin: API endpoints only (no UI dashboard required)
-Token cleanup: Auto-cleanup in cron job (delete pending_claims older than 1 minute)
-Demo coordinates: Use Portsmouth, UK area (50.798, -1.091) as center point
-
----
-
-## Important Implementation Notes
-
-When cache is claimed during grace period:
-1. First user to click verification link wins
-2. Deactivate cache immediately
-3. Calculate reactivation time based on chunk and current time
-4. Set deactivated_until timestamp according to chunk rules
-
-Grace period edge case:
-- If multiple users verify location within 10 seconds, they ALL get verification links
-- But only first to click the link gets points
-- Others see "Cache already claimed by [username]"
-
-Chunk reactivation calculation:
-- START claimed at 09:30 → reactivates at 13:40 (END chunk starts)
-- MIDDLE claimed at 11:00 → reactivates next day at 09:00 (START chunk)
-- END claimed at 14:30 → reactivates next day at 10:40 (MIDDLE chunk)
-- If reactivation time falls in inactive window, delay until next active period
+Wait for my approval before moving to Step 2.
+</pre>
+</body>
+</html>
 </pre>
 </body>
 </html>
