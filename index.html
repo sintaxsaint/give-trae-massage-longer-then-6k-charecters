@@ -413,6 +413,74 @@ Need admin dashboard UI or just API endpoints?
 Should expired verification tokens auto-cleanup or manual?
 
 Please build a fully functional demo with the specifications above. Focus on core functionality first, then polish the UI.
+---
+
+## Cloudflare Cron Trigger Setup
+
+Add to wrangler.toml:
+[triggers]
+crons = ["*/5 * * * *"]
+
+Cron job handler should:
+- Run every 5 minutes
+- Check current time (HH:MM format in UK timezone)
+- Determine if in active window (skip if 08:40-09:00, 13:35-13:40, or 15:40-08:45)
+- Query caches where deactivated_until <= current_timestamp
+- Update their status to 'active'
+- Clean up expired pending_claims older than 1 minute
+
+---
+
+## Demo Seed Data (seed.sql)
+
+-- 8 demo caches (one per location area)
+INSERT INTO caches (cache_number, half_code, wordle_word, location_lat, location_lng, location_area, points_value, rarity, chunk, status) VALUES
+(1, 'AB3X', 'CRANE', 50.7984, -1.0916, 'Block A', 45, 'common', 'START', 'active'),
+(2, 'CD7Y', 'SLATE', 50.7985, -1.0917, 'Block B', 50, 'common', 'MIDDLE', 'active'),
+(3, 'EF2Z', 'TRACE', 50.7986, -1.0918, 'Block C', 120, 'rare', 'END', 'active'),
+(4, 'GH5W', 'BLUNT', 50.7987, -1.0919, 'Block D', 55, 'common', 'START', 'active'),
+(5, 'IJ8V', 'SHADE', 50.7988, -1.0920, 'Music Hallway', 130, 'rare', 'MIDDLE', 'active'),
+(6, 'KL1U', 'CRISP', 50.7989, -1.0921, 'Playground', 60, 'common', 'END', 'active'),
+(7, 'MN4T', 'FROST', 50.7990, -1.0922, 'Courtyard', 250, 'epic', 'START', 'active'),
+(8, 'OP9S', 'GRASP', 50.7991, -1.0923, 'Cafeteria', 65, 'common', 'MIDDLE', 'active');
+
+-- 3 demo users (use actual bcrypt hashes when building)
+INSERT INTO users (username, password_hash, points, lifetime_points, subscription_tier) VALUES
+('demo_free', 'REPLACE_WITH_BCRYPT_HASH', 150, 150, 'free'),
+('demo_budget', 'REPLACE_WITH_BCRYPT_HASH', 450, 450, 'budget'),
+('demo_premium', 'REPLACE_WITH_BCRYPT_HASH', 820, 820, 'premium');
+
+---
+
+## Answers to Questions
+
+Frontend: Vanilla JavaScript (easier to understand and maintain)
+Notifications: Real-time only via polling (no database persistence needed)
+Live updates: Poll /api/cache/active every 10 seconds
+Admin: API endpoints only (no UI dashboard required)
+Token cleanup: Auto-cleanup in cron job (delete pending_claims older than 1 minute)
+Demo coordinates: Use Portsmouth, UK area (50.798, -1.091) as center point
+
+---
+
+## Important Implementation Notes
+
+When cache is claimed during grace period:
+1. First user to click verification link wins
+2. Deactivate cache immediately
+3. Calculate reactivation time based on chunk and current time
+4. Set deactivated_until timestamp according to chunk rules
+
+Grace period edge case:
+- If multiple users verify location within 10 seconds, they ALL get verification links
+- But only first to click the link gets points
+- Others see "Cache already claimed by [username]"
+
+Chunk reactivation calculation:
+- START claimed at 09:30 → reactivates at 13:40 (END chunk starts)
+- MIDDLE claimed at 11:00 → reactivates next day at 09:00 (START chunk)
+- END claimed at 14:30 → reactivates next day at 10:40 (MIDDLE chunk)
+- If reactivation time falls in inactive window, delay until next active period
 </pre>
 </body>
 </html>
