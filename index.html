@@ -1,237 +1,535 @@
 <!DOCTYPE html>
 <html>
-<head><title>CacheQuest Specs</title></head>
+<head><title> </title></head>
 <body>
 <pre style="white-space: pre-wrap; font-family: monospace;">
-Perfect! Here's a prompt optimized for Cline + MiniMax to build CacheQuest:
-html<!DOCTYPE html>
-<html>
-<head><title>CacheQuest Build Prompt for Cline</title></head>
-<body>
-<pre style="white-space: pre-wrap; font-family: monospace;">
-# CLINE BUILD INSTRUCTIONS - CacheQuest Backend
-
-You are building a Cloudflare Worker backend with D1 database. Work step-by-step, one file at a time.
-
-## CRITICAL RULES
-1. Ask before creating each file
-2. Show me the code before writing it
-3. Test each endpoint individually
-4. Use simple, clear variable names
-5. Add comments explaining logic
-
-## BUILD ORDER (Do these ONE AT A TIME)
-
-### Step 1: Project Setup
-Create these files in order:
-1. wrangler.toml - Basic config
-2. schema.sql - Just the tables
-3. package.json - Dependencies only
-
-Ask me to verify each before moving on.
-
-### Step 2: Utility Functions (src/utils.js)
-Build ONLY these functions:
-```javascript
-// 1. Haversine distance calculator (3 meter check)
-export function getDistanceInMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-}
-
-// 2. Generate random token
-export function generateToken() {
-  return crypto.randomUUID();
-}
-
-// 3. Get current UK time and determine chunk
-export function getCurrentChunk() {
-  const now = new Date();
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  const time = hours * 60 + minutes;
-  
-  // 09:00-10:20 = START (540-620 mins)
-  // 10:40-12:40 = MIDDLE (640-760 mins)  
-  // 13:40-15:40 = END (820-940 mins)
-  
-  if (time >= 540 && time <= 620) return 'START';
-  if (time >= 640 && time <= 760) return 'MIDDLE';
-  if (time >= 820 && time <= 940) return 'END';
-  return null; // Inactive time
-}
-
-// 4. Calculate when cache should reactivate
-export function calculateReactivation(claimedChunk, claimTime) {
-  // START -> END same day
-  // MIDDLE -> START next day
-  // END -> MIDDLE next day
-  // Return Unix timestamp
-}
-```
-
-Stop after utils.js and let me test it.
-
-### Step 3: Authentication (src/auth.js)
-Build ONLY:
-- hashPassword(password) - Use bcrypt
-- verifyPassword(password, hash)
-- generateJWT(userId, tier)
-- verifyJWT(token)
-
-Test these before moving on.
-
-### Step 4: Database Queries (src/db.js)
-Build simple query functions:
-- getUser(username)
-- createUser(username, passwordHash)
-- getUserById(id)
-- getCache(cacheId)
-- getCacheByHalfCode(halfCode)
-- updateCacheStatus(cacheId, status, reactivateTime)
-
-NO COMPLEX LOGIC YET. Just simple SELECT/INSERT/UPDATE.
-
-### Step 5: Cache Logic (src/cache.js)
-Build ONE function at a time:
-
-1. verifyLocation(halfCode, lat, lng, userId, db)
-   - Find cache by half_code
-   - Check distance < 3 meters
-   - Create pending_claim
-   - Return verification token
-
-2. claimCache(verificationToken, userId, db)
-   - Check if pending_claim exists and not expired
-   - Check if cache still active
-   - Award points (FIRST person wins)
-   - Deactivate cache
-   - Calculate reactivation time
-
-3. getActiveCaches(userTier, db)
-   - Return caches where status='active'
-   - Filter response by tier (free/budget/premium)
-
-Build and test EACH function separately.
-
-### Step 6: Main Router (src/index.js)
-Wire up routes ONE AT A TIME:
-- POST /api/auth/register
-- POST /api/auth/login
-- POST /api/cache/verify-location
-- POST /api/cache/claim
-- GET /api/cache/active
-
-Test each endpoint with curl or Postman before adding the next.
-
-### Step 7: Leaderboard (src/leaderboard.js)
-Simple SQL queries only:
-- getCurrentLeaderboard() - ORDER BY points DESC
-- getLifetimeLeaderboard() - ORDER BY lifetime_points DESC
-
-### Step 8: Cron Job (src/cron.js)
-Handle scheduled reactivation:
-- Run every 5 minutes
-- Check if in active window
-- Reactivate caches where deactivated_until <= now
-
-## DATABASE SCHEMA
-
-CREATE TABLE users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  points INTEGER DEFAULT 0,
-  lifetime_points INTEGER DEFAULT 0,
-  subscription_tier TEXT DEFAULT 'free',
-  hints_used_this_week INTEGER DEFAULT 0,
-  hints_used_this_term INTEGER DEFAULT 0,
-  created_at INTEGER DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE TABLE caches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cache_number INTEGER UNIQUE NOT NULL,
-  half_code TEXT UNIQUE NOT NULL,
-  wordle_word TEXT NOT NULL,
-  location_lat REAL NOT NULL,
-  location_lng REAL NOT NULL,
-  location_area TEXT NOT NULL,
-  points_value INTEGER NOT NULL,
-  rarity TEXT NOT NULL,
-  chunk TEXT NOT NULL,
-  status TEXT DEFAULT 'active',
-  deactivated_until INTEGER,
-  created_at INTEGER DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE TABLE pending_claims (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  cache_id INTEGER NOT NULL,
-  verification_token TEXT UNIQUE NOT NULL,
-  expires_at INTEGER NOT NULL,
-  created_at INTEGER DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE TABLE claims (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  cache_id INTEGER NOT NULL,
-  points_awarded INTEGER NOT NULL,
-  claimed_at INTEGER DEFAULT (strftime('%s', 'now'))
-);
-
-## TESTING CHECKLIST
-
-After each step, test:
-1. Does the code compile?
-2. Can you call the function?
-3. Does it return expected output?
-4. Does it handle errors?
-
-## COMMON MISTAKES TO AVOID
-
-❌ Don't build everything at once
-❌ Don't use complex async/await chains
-❌ Don't forget error handling
-❌ Don't skip testing steps
-
-✅ One file at a time
-✅ Simple, clear code
-✅ Test after each change
-✅ Ask before proceeding
-
-## DEPENDENCIES (package.json)
-
+package WebShell_fla
 {
-  "name": "cachequest-worker",
-  "version": "1.0.0",
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "jose": "^5.0.0"
-  }
+   import adobe.utils.*;
+   import br.com.stimuli.loading.BulkLoader;
+   import br.com.stimuli.loading.BulkProgressEvent;
+   import flash.accessibility.*;
+   import flash.desktop.*;
+   import flash.display.*;
+   import flash.errors.*;
+   import flash.events.*;
+   import flash.external.*;
+   import flash.filters.*;
+   import flash.geom.*;
+   import flash.globalization.*;
+   import flash.media.*;
+   import flash.net.*;
+   import flash.net.drm.*;
+   import flash.printing.*;
+   import flash.profiler.*;
+   import flash.sampler.*;
+   import flash.sensors.*;
+   import flash.system.*;
+   import flash.text.*;
+   import flash.text.engine.*;
+   import flash.text.ime.*;
+   import flash.ui.*;
+   import flash.utils.*;
+   import flash.xml.*;
+   
+   public dynamic class MainTimeline extends MovieClip
+   {
+      
+      public var game_mask:MovieClip;
+      
+      public var loadingTextArray:*;
+      
+      public var i:Number;
+      
+      public var currentLoadingTextArray:Number;
+      
+      public var currentLoadingTextIndex:Number;
+      
+      public var loadingTextTimer:Timer;
+      
+      public var loadingMC:*;
+      
+      public var bl:BulkLoader;
+      
+      public var fvars:Object;
+      
+      public var hasFVar:Boolean;
+      
+      public var key:String;
+      
+      public var value:String;
+      
+      public var es2:ErrorScreen2;
+      
+      public function MainTimeline()
+      {
+         var _temp_1:* = true;
+         var _loc1_:Boolean = false;
+         var _loc2_:Boolean = _temp_1;
+         if(!(_loc1_ && _loc2_))
+         {
+            super();
+            if(_loc2_ || _loc1_)
+            {
+               addFrameScript(0,this.frame1);
+            }
+         }
+      }
+      
+      public function errorLoading(param1:Event) : void
+      {
+         var _temp_1:* = true;
+         var _loc4_:Boolean = false;
+         var _loc5_:Boolean = _temp_1;
+         var _loc2_:ErrorScreen = new ErrorScreen();
+         if(!(_loc4_ && Boolean(_loc2_)))
+         {
+            _loc2_.file_name.text = "";
+            if(!(_loc4_ && _loc3_))
+            {
+               addChild(_loc2_);
+            }
+         }
+         var _loc3_:Array = this.bl.getFailedItems();
+         if(_loc5_ || Boolean(_loc2_))
+         {
+            if(_loc3_[0].url.url == "asdf12345.swf")
+            {
+               if(_loc5_ || Boolean(param1))
+               {
+                  _loc2_.file_name.text = "Main Game Data";
+                  if(_loc4_ && Boolean(this))
+                  {
+                  }
+               }
+            }
+            else if(_loc3_[0].url.url == "Minigames.swf")
+            {
+               if(!(_loc4_ && Boolean(_loc2_)))
+               {
+                  _loc2_.file_name.text = "Additional Game Data";
+               }
+            }
+         }
+      }
+      
+      public function enforceVersion() : void
+      {
+         §§push(false);
+         var _loc7_:Boolean = true;
+         var _loc8_:* = §§pop();
+         var _loc6_:* = undefined;
+         var _loc1_:String = Capabilities.version;
+         var _loc2_:Array = _loc1_.split(" ");
+         var _loc3_:Array = _loc2_[1].split(",");
+         var _loc4_:String = _loc2_[0];
+         var _loc5_:Number = Number(_loc3_[0]);
+         if(_loc5_ < 10)
+         {
+            if(!(_loc8_ && Boolean(_loc3_)))
+            {
+               _loc6_ = this.addChild(new versionMovieClip());
+               _loc6_.x = 360;
+               if(!_loc8_)
+               {
+                  _loc6_.y = 225;
+                  if(!(_loc8_ && Boolean(_loc1_)))
+                  {
+                     §§goto(addr009e);
+                  }
+                  §§goto(addr00ae);
+               }
+               addr009e:
+               removeChild(this.loadingMC);
+               if(!_loc8_)
+               {
+                  _loc6_.addEventListener(MouseEvent.MOUSE_DOWN,this.getFlashPlayer);
+                  addr00ae:
+               }
+               §§goto(addr00d7);
+            }
+         }
+         else
+         {
+            this.bl.start();
+         }
+         addr00d7:
+      }
+      
+      public function updateLoadingText(param1:TimerEvent) : void
+      {
+         var _temp_1:* = true;
+         var _loc4_:Boolean = false;
+         var _loc5_:Boolean = _temp_1;
+         if(_loc5_)
+         {
+            var _loc2_:* = this;
+            §§push(_loc2_.currentLoadingTextIndex);
+            if(!(_loc4_ && _loc3_))
+            {
+               §§push(§§pop() + 1);
+            }
+            var _loc3_:* = §§pop();
+            if(!(_loc4_ && _loc3_))
+            {
+               _loc2_.currentLoadingTextIndex = _loc3_;
+            }
+            §§push(this.currentLoadingTextIndex);
+            if(_loc5_)
+            {
+               if(§§pop() >= this.loadingTextArray[this.currentLoadingTextArray].length)
+               {
+                  _loc2_ = this;
+                  §§push(_loc2_.currentLoadingTextArray);
+                  if(_loc5_ || _loc3_)
+                  {
+                     §§push(§§pop() + 1);
+                  }
+                  _loc3_ = §§pop();
+                  if(_loc5_)
+                  {
+                     _loc2_.currentLoadingTextArray = _loc3_;
+                  }
+                  addr008f:
+                  if(this.currentLoadingTextArray >= this.loadingTextArray.length)
+                  {
+                     this.currentLoadingTextArray = 0;
+                  }
+                  this.currentLoadingTextIndex = 0;
+               }
+               this.loadingMC.loadBarMC.loadText.text = this.loadingTextArray[this.currentLoadingTextArray][this.currentLoadingTextIndex];
+               return;
+               addr00a3:
+            }
+            §§goto(addr008f);
+         }
+         §§goto(addr00a3);
+      }
+      
+      public function getFlashPlayer(param1:MouseEvent) : void
+      {
+         §§push(false);
+         var _loc2_:Boolean = true;
+         var _loc3_:* = §§pop();
+         if(_loc2_)
+         {
+            navigateToURL(new URLRequest("http://get.adobe.com/flashplayer/"));
+         }
+      }
+      
+      public function updateProgress(param1:BulkProgressEvent) : void
+      {
+         var _temp_1:* = true;
+         var _loc2_:Boolean = false;
+         var _loc3_:Boolean = _temp_1;
+         if(!_loc2_)
+         {
+            this.loadingMC.loadBarMC.gotoAndStop(Math.ceil(param1.weightPercent * 100));
+         }
+      }
+      
+      public function doneLoading(param1:BulkProgressEvent) : void
+      {
+         var _temp_1:* = true;
+         var _loc3_:Boolean = false;
+         var _loc4_:Boolean = _temp_1;
+         var _loc2_:MovieClip = this.bl.contents["asdf12345.swf"];
+         if(_loc4_)
+         {
+            _loc2_.mask = this.game_mask;
+            if(_loc4_ || Boolean(this))
+            {
+               addChild(_loc2_);
+               if(_loc4_)
+               {
+                  _loc2_.play();
+                  if(!_loc3_)
+                  {
+                     addr0069:
+                     removeChild(this.loadingMC);
+                  }
+                  §§goto(addr0073);
+               }
+               §§goto(addr0069);
+            }
+         }
+         addr0073:
+      }
+      
+      internal function frame1() : *
+      {
+         var _temp_1:* = true;
+         var _loc39_:Boolean = false;
+         var _loc40_:Boolean = _temp_1;
+         if(!_loc39_)
+         {
+            stage.scaleMode = StageScaleMode.NO_SCALE;
+            if(_loc40_ || Boolean(this))
+            {
+               addr0036:
+               this.loadingTextArray = new Array();
+               if(!_loc39_)
+               {
+                  addr0044:
+                  this.i = 0;
+               }
+               var _temp_5:* = this.loadingTextArray;
+               var _loc1_:* = this.i++;
+               _temp_5[_loc1_] = new Array("Generating Islands...","Planting Trees...","Watering Pixels...");
+               var _temp_8:* = this.loadingTextArray;
+               var _loc2_:* = this.i++;
+               _temp_8[_loc2_] = new Array("Pasteurizing Milk...","Cooking Hotdogs...");
+               var _temp_11:* = this.loadingTextArray;
+               var _loc3_:* = this.i++;
+               _temp_11[_loc3_] = new Array("Shaking Spraycans...");
+               var _loc4_:*;
+               this.loadingTextArray[_loc4_ = this.i++] = new Array("Printing Money...");
+               var _loc5_:*;
+               this.loadingTextArray[_loc5_ = this.i++] = new Array("Customizing Skateboard...");
+               var _loc6_:*;
+               this.loadingTextArray[_loc6_ = this.i++] = new Array("Hacking Your Computer...","Planting Evidence...","Contacting FBI...");
+               var _loc7_:*;
+               this.loadingTextArray[_loc7_ = this.i++] = new Array("Finding Sasquatch...","Cloning Sasquatch...");
+               var _loc8_:*;
+               this.loadingTextArray[_loc8_ = this.i++] = new Array("Travelling Through Time...");
+               var _loc9_:*;
+               this.loadingTextArray[_loc9_ = this.i++] = new Array("Cat-Napping...","Procrastinating...");
+               var _loc10_:*;
+               this.loadingTextArray[_loc10_ = this.i++] = new Array("Entangling Particles...","Solving M-theory...");
+               var _loc11_:*;
+               this.loadingTextArray[_loc11_ = this.i++] = new Array("Loading 1st Dimension...","Loading 2nd Dimension...","Loading 3rd Dimension...","(Failed to Load 3D.)");
+               var _loc12_:*;
+               this.loadingTextArray[_loc12_ = this.i++] = new Array("Cloning Dinosaurs...","Opening Theme Park...");
+               var _loc13_:*;
+               this.loadingTextArray[_loc13_ = this.i++] = new Array("Accelerating to 88 MPH...","Inventing Hoverboards...");
+               var _loc14_:*;
+               this.loadingTextArray[_loc14_ = this.i++] = new Array("Folding Space...","Entering Wormhole...");
+               var _loc15_:*;
+               this.loadingTextArray[_loc15_ = this.i++] = new Array("Exterminating Kittens...");
+               var _loc16_:*;
+               this.loadingTextArray[_loc16_ = this.i++] = new Array("Embiggening World...","Generating Automagic...");
+               var _loc17_:*;
+               this.loadingTextArray[_loc17_ = this.i++] = new Array("Brewing Coffee...","Glazing Donuts...");
+               var _loc18_:*;
+               this.loadingTextArray[_loc18_ = this.i++] = new Array("Receiving Fax...","Collating Fax...");
+               var _loc19_:*;
+               this.loadingTextArray[_loc19_ = this.i++] = new Array("(PC Load Letter.)");
+               var _loc20_:*;
+               this.loadingTextArray[_loc20_ = this.i++] = new Array("Contacting Aliens...","Notifying NASA...");
+               var _loc21_:*;
+               this.loadingTextArray[_loc21_ = this.i++] = new Array("Mining Goldium...","Fighting Natas...");
+               var _loc22_:*;
+               this.loadingTextArray[_loc22_ = this.i++] = new Array("Destroying Ecosystem...");
+               var _loc23_:*;
+               this.loadingTextArray[_loc23_ = this.i++] = new Array("Pillaging Villages...","Plundering Ports...");
+               var _loc24_:*;
+               this.loadingTextArray[_loc24_ = this.i++] = new Array("Luring Victims...","Harvesting Organs...");
+               var _loc25_:*;
+               this.loadingTextArray[_loc25_ = this.i++] = new Array("Loading Snakes Onto Plane...");
+               var _loc26_:*;
+               this.loadingTextArray[_loc26_ = this.i++] = new Array("Robbing Tombs...","Finding Ark...");
+               var _loc27_:*;
+               this.loadingTextArray[_loc27_ = this.i++] = new Array("Prank Calling Palin...");
+               var _loc28_:*;
+               this.loadingTextArray[_loc28_ = this.i++] = new Array("Flicking Power Switch...","Blowing in Cartridge...");
+               var _loc29_:*;
+               this.loadingTextArray[_loc29_ = this.i++] = new Array("Rewinding Cassette Tape...");
+               var _loc30_:*;
+               this.loadingTextArray[_loc30_ = this.i++] = new Array("Rewinding Odometer...","Saving Ferris...");
+               var _loc31_:*;
+               this.loadingTextArray[_loc31_ = this.i++] = new Array("Downloading Torrent...");
+               var _loc32_:*;
+               this.loadingTextArray[_loc32_ = this.i++] = new Array("Posting to Reddit...");
+               var _loc33_:*;
+               this.loadingTextArray[_loc33_ = this.i++] = new Array("Microwaving Marshmallows...");
+               var _loc34_:*;
+               this.loadingTextArray[_loc34_ = this.i++] = new Array("Shaking Polaroid...");
+               var _loc35_:*;
+               this.loadingTextArray[_loc35_ = this.i++] = new Array("Texting Chewbacca...","Texting Your Mom...");
+               var _loc36_:*;
+               this.loadingTextArray[_loc36_ = this.i++] = new Array("Doing the Worm...");
+               this.currentLoadingTextArray = Math.floor(Math.random() * this.loadingTextArray.length);
+               this.currentLoadingTextIndex = -1;
+               this.loadingTextTimer = new Timer(1000);
+               if(_loc40_ || _loc1_)
+               {
+                  this.loadingTextTimer.addEventListener(TimerEvent.TIMER,this.updateLoadingText);
+               }
+               this.loadingTextTimer.start();
+               this.loadingMC = this.addChild(new loadingMovieClip());
+               this.loadingMC.x = 360;
+               if(!(_loc39_ && _loc2_))
+               {
+                  this.loadingMC.y = 225;
+                  if(!(_loc39_ && Boolean(this)))
+                  {
+                     this.bl = new BulkLoader("SRPG2");
+                     if(_loc40_ || _loc1_)
+                     {
+                        §§push(this.bl);
+                        if(_loc40_)
+                        {
+                           §§pop().add("asdf12345.swf");
+                           if(_loc40_)
+                           {
+                              §§push(this.bl);
+                              if(!_loc39_)
+                              {
+                                 §§pop().add("Minigames.swf");
+                                 if(!_loc39_)
+                                 {
+                                    §§push(this.bl);
+                                    if(!(_loc39_ && _loc1_))
+                                    {
+                                       addr06ad:
+                                       §§push(BulkProgressEvent.PROGRESS);
+                                       if(!_loc39_)
+                                       {
+                                          §§pop().addEventListener(§§pop(),this.updateProgress);
+                                          if(_loc40_ || _loc2_)
+                                          {
+                                             §§push(this.bl);
+                                             if(!_loc39_)
+                                             {
+                                                §§push(BulkProgressEvent.COMPLETE);
+                                                if(_loc40_ || _loc1_)
+                                                {
+                                                   §§pop().addEventListener(§§pop(),this.doneLoading);
+                                                   if(_loc40_)
+                                                   {
+                                                      §§goto(addr06fb);
+                                                   }
+                                                   §§goto(addr0717);
+                                                }
+                                                addr06fb:
+                                                this.bl.addEventListener(BulkLoader.ERROR,this.errorLoading);
+                                                §§goto(addr06f7);
+                                             }
+                                             addr06f7:
+                                             §§goto(addr06f4);
+                                          }
+                                          addr06f4:
+                                          if(_loc40_ || _loc3_)
+                                          {
+                                             addr0710:
+                                             stage.showDefaultContextMenu = false;
+                                             addr0717:
+                                             this.fvars = LoaderInfo(this.root.loaderInfo).parameters;
+                                             if(_loc40_ || _loc3_)
+                                             {
+                                                addr073a:
+                                                this.hasFVar = false;
+                                             }
+                                          }
+                                          §§goto(addr073f);
+                                       }
+                                       §§goto(addr06fb);
+                                    }
+                                    §§goto(addr06f7);
+                                 }
+                                 §§goto(addr0710);
+                              }
+                              §§goto(addr06ad);
+                           }
+                           §§goto(addr0717);
+                        }
+                        §§goto(addr06f7);
+                     }
+                     addr073f:
+                     for(this.key in this.fvars)
+                     {
+                        if(!(_loc40_ || _loc1_))
+                        {
+                           break;
+                        }
+                        this.value = String(this.fvars[this.key]);
+                        if(!(_loc39_ && Boolean(this)))
+                        {
+                           §§push(this.key);
+                           if(_loc40_)
+                           {
+                              §§push(§§pop() == "valid");
+                              if(!(_loc39_ && _loc2_))
+                              {
+                                 var _temp_123:* = §§pop();
+                                 §§push(_temp_123);
+                                 if(_temp_123)
+                                 {
+                                    if(_loc40_)
+                                    {
+                                       addr07ae:
+                                       §§pop();
+                                       if(_loc40_ || _loc1_)
+                                       {
+                                          addr07c5:
+                                          addr07c1:
+                                          addr07bd:
+                                          if(this.value != "true")
+                                          {
+                                             continue;
+                                          }
+                                          if(_loc39_)
+                                          {
+                                             break;
+                                          }
+                                       }
+                                       this.hasFVar = true;
+                                       break;
+                                    }
+                                 }
+                                 §§goto(addr07c5);
+                              }
+                              §§goto(addr07ae);
+                           }
+                           §§goto(addr07c1);
+                        }
+                        §§goto(addr07bd);
+                     }
+                     if(!_loc39_)
+                     {
+                        if(!this.hasFVar)
+                        {
+                           if(_loc40_ || _loc3_)
+                           {
+                              this.es2 = new ErrorScreen2();
+                              if(_loc40_)
+                              {
+                                 addr0810:
+                                 parent.addChild(this.es2);
+                                 if(_loc40_)
+                                 {
+                                    parent.removeChild(this);
+                                    if(_loc40_)
+                                    {
+                                       navigateToURL(new URLRequest("http://www.xgenstudios.com/game.php?keyword=stick-rpg-2"),"_self");
+                                       if(_loc39_ && _loc1_)
+                                       {
+                                       }
+                                    }
+                                 }
+                              }
+                              §§goto(addr0865);
+                           }
+                           §§goto(addr0810);
+                        }
+                        else
+                        {
+                           this.enforceVersion();
+                        }
+                     }
+                     addr0865:
+                     return;
+                  }
+                  §§goto(addr0717);
+               }
+               §§goto(addr073a);
+            }
+            §§goto(addr0044);
+         }
+         §§goto(addr0036);
+      }
+   }
 }
-
-## ENVIRONMENT VARIABLES
-
-Set these in Cloudflare dashboard:
-- JWT_SECRET (generate random 256-bit string)
-- ADMIN_TOKEN (generate random string)
-
-## START HERE
-
-Begin with: "Let's start with Step 1. Create wrangler.toml with basic Cloudflare Worker configuration."
-
-Wait for my approval before moving to Step 2.
 </pre>
 </body>
 </html>
